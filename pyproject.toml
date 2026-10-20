@@ -1,0 +1,13 @@
+[project]
+name = "python-crash-course"
+version = "0.1.0"
+description = "Python crash course for PHP/Java developers"
+readme = "README.md"
+authors = [
+    { name = "fotistsiou", email = "fotis.tsioumas@outlook.com" }
+]
+requires-python = ">=3.13"
+dependencies = []
+
+[tool.uv]
+package = false
