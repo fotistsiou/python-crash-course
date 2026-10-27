@@ -1,70 +1,96 @@
+import random
+
 BOT_NAME = "MiniBot"
-COMMANDS = {"/history", "/last", "/stats", "/quit"}  # set: unique items, fast "in"
-GREETINGS = ("hello", "hi", "γεια")                  # tuple: fixed, never changes
+COMMANDS = {"/history", "/last", "/stats", "/quit"}
+GREETINGS = ("hello", "hi", "γεια")
 ROLES = ("user", "assistant")
+
+Message = dict[str, str]  # type alias: {"role": ..., "content": ...}
+
+
+def say(*lines: str) -> None:
+    """Print one or more lines as the bot."""
+    for line in lines:
+        print(f"{BOT_NAME}> {line}")
+
+
+def fake_llm(prompt: str, *, temperature: float = 0.0) -> str:
+    """Rule-based stand-in for a real LLM call."""
+    if prompt.endswith("?"):
+        if random.random() < temperature:  # higher temperature = more "creative"
+            return "Hmm, let me think... maybe 41?"
+        return f"Good question ({len(prompt)} chars). I'm a fake LLM, so: 42."
+    if prompt.lower() in GREETINGS:
+        return "Hello! Ask me something."
+    return f"You said '{prompt}'. Tell me more."
+
+
+def ask(history: list[Message], prompt: str, **llm_options: float) -> str:
+    """Record the prompt, get a reply from the LLM, record the reply."""
+    history.append({"role": "user", "content": prompt})
+    reply = fake_llm(prompt, **llm_options)  # forward options as named args
+    history.append({"role": "assistant", "content": reply})
+    return reply
+
+
+def count_by_role(history: list[Message], roles: tuple[str, ...] = ROLES) -> dict[str, int]:
+    return {role: len([m for m in history if m["role"] == role]) for role in roles}
+
+
+def last_question(history: list[Message]) -> str | None:
+    questions = [
+        m["content"]
+        for m in history
+        if m["role"] == "user" and m["content"].endswith("?")
+    ]
+    return questions[-1] if questions else None
+
+
+def handle_command(command: str, history: list[Message]) -> bool:
+    """Run a slash command. Return False when the chat should end."""
+    if command not in COMMANDS:
+        say(f"Unknown command. Try: {', '.join(sorted(COMMANDS))}")
+    elif command == "/quit":
+        say(f"Bye! We talked for {count_by_role(history)['user']} turns.")
+        return False
+    elif command == "/history":
+        if not history:
+            say("No messages yet.")
+        for i, message in enumerate(history, start=1):
+            print(f"  {i}. {message['role']}: {message['content']}")
+    elif command == "/last":
+        question = last_question(history)
+        if question is None:
+            say("You haven't asked anything yet.")
+        else:
+            say(f"Your last question was: '{question}'")
+    elif command == "/stats":
+        user_text = " ".join([m["content"] for m in history if m["role"] == "user"])
+        say(
+            f"Messages per role: {count_by_role(history)}",
+            f"Unique words you used: {len(set(user_text.lower().split()))}",
+        )
+    return True
 
 
 def main() -> None:
-    print(f"{BOT_NAME} is ready. Commands: {', '.join(sorted(COMMANDS))}")
-
-    history = []  # list of dicts: the shape LLM APIs expect
+    say(f"Ready. Commands: {', '.join(sorted(COMMANDS))}")
+    history: list[Message] = []
 
     while True:
         text = input("you> ").strip()
 
         if not text:
-            print(f"{BOT_NAME}> I'm listening...")
+            say("I'm listening...")
             continue
 
         if text.startswith("/"):
-            if text not in COMMANDS:
-                print(f"{BOT_NAME}> Unknown command. Try: {', '.join(sorted(COMMANDS))}")
-                continue
-
-            if text == "/quit":
-                turns = len([m for m in history if m["role"] == "user"])
-                print(f"{BOT_NAME}> Bye! We talked for {turns} turns.")
+            if not handle_command(text, history):
                 break
+            continue
 
-            if text == "/history":
-                if not history:
-                    print(f"{BOT_NAME}> No messages yet.")
-                for i, message in enumerate(history, start=1):  # (index, item) tuples
-                    print(f"  {i}. {message['role']}: {message['content']}")
-                continue
-
-            if text == "/last":
-                questions = [
-                    m["content"]
-                    for m in history
-                    if m["role"] == "user" and m["content"].endswith("?")
-                ]
-                if questions:
-                    print(f"{BOT_NAME}> Your last question was: '{questions[-1]}'")
-                else:
-                    print(f"{BOT_NAME}> You haven't asked anything yet.")
-                continue
-
-            if text == "/stats":
-                counts = {role: len([m for m in history if m["role"] == role]) for role in ROLES}
-                user_text = " ".join([m["content"] for m in history if m["role"] == "user"])
-                unique_words = set(user_text.lower().split())
-                print(f"{BOT_NAME}> Messages per role: {counts}")
-                print(f"{BOT_NAME}> Unique words you used: {len(unique_words)}")
-                continue
-
-        history.append({"role": "user", "content": text})
-
-        if text.endswith("?"):
-            reply = f"Good question ({len(text)} chars). I'm a fake LLM, so: 42."
-        elif text.lower() in GREETINGS:
-            reply = "Hello! Ask me something."
-        else:
-            reply = f"You said '{text}'. Tell me more."
-
-        history.append({"role": "assistant", "content": reply})
-        turn = len(history) // 2  # each turn = 1 user + 1 assistant message
-        print(f"{BOT_NAME}> [turn {turn}] {reply}")
+        reply = ask(history, text, temperature=0.3)
+        say(f"[turn {len(history) // 2}] {reply}")
 
 
 if __name__ == "__main__":
